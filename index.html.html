@@ -1,0 +1,546 @@
+<meta charset="utf-8">
+<title>Venta por Terminal</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: una columna de trabajo con tres pasos (archivo, usuario, resultado); el resultado es una vista previa del Excel. */
+:root{
+  --bg:#f3f5f8; --panel:#ffffff; --fg:#17202e; --muted:#5d6b80; --line:#d9dfe8;
+  --accent:#1f4e78; --accent-fg:#ffffff; --tint:#ddebf7; --ok:#1d7a4d; --bad:#b3261e;
+  --sans:'IBM Plex Sans',system-ui,-apple-system,'Segoe UI',sans-serif;
+  --mono:'IBM Plex Mono',ui-monospace,'SF Mono',Consolas,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0f1520; --panel:#172131; --fg:#e6ecf5; --muted:#93a1b6; --line:#2a374b;
+  --accent:#6fa8dc; --accent-fg:#0d1827; --tint:#1e3550; --ok:#59c58e; --bad:#ff8a80; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0f1520; --panel:#172131; --fg:#e6ecf5; --muted:#93a1b6; --line:#2a374b;
+  --accent:#6fa8dc; --accent-fg:#0d1827; --tint:#1e3550; --ok:#59c58e; --bad:#ff8a80; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font:15px/1.5 var(--sans);
+  padding-block:32px 56px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+main{max-width:960px;margin:0 auto;display:flex;flex-direction:column;gap:20px}
+h1{font-size:26px;line-height:1.2;margin:0;font-weight:600;letter-spacing:-.01em;text-wrap:balance}
+.lead{margin:6px 0 0;color:var(--muted);max-width:62ch}
+.step{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:20px;display:flex;flex-direction:column;gap:14px;min-width:0}
+.step[aria-disabled="true"]{opacity:.5;pointer-events:none}
+.step h2{margin:0;font-size:12px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:var(--muted)}
+.drop{border:1.5px dashed var(--line);border-radius:6px;padding:26px 16px;text-align:center;cursor:pointer;color:var(--muted);transition:border-color .15s,background .15s}
+.drop:hover,.drop.over,.drop:focus-visible{border-color:var(--accent);background:var(--tint);color:var(--fg);outline:none}
+.drop b{color:var(--fg);font-weight:500}
+.file-ok{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;font-family:var(--mono);font-size:13px}
+.file-ok .name{overflow-wrap:anywhere}
+.row{display:flex;gap:12px;flex-wrap:wrap;align-items:stretch}
+select,input[type=text]{flex:1 1 280px;min-width:0;font:inherit;padding:10px 12px;border:1px solid var(--line);border-radius:4px;background:var(--bg);color:var(--fg)}
+select:focus-visible,input:focus-visible,button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+button{font:inherit;font-weight:500;padding:10px 20px;border-radius:4px;border:1px solid var(--accent);background:var(--accent);color:var(--accent-fg);cursor:pointer}
+button:hover:not(:disabled){filter:brightness(1.08)}
+button:disabled{opacity:.45;cursor:not-allowed}
+button.ghost{background:transparent;color:var(--accent)}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:4px;overflow:hidden}
+.stats div{background:var(--panel);padding:10px 14px;display:flex;flex-direction:column;gap:2px;min-width:0}
+.stats span{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+.stats strong{font-family:var(--mono);font-weight:500;font-size:14px;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.scroll{overflow-x:auto;border:1px solid var(--line);border-radius:4px;max-height:420px;overflow-y:auto}
+table{border-collapse:collapse;width:100%;font-family:var(--mono);font-size:13px;font-variant-numeric:tabular-nums}
+th{position:sticky;top:0;background:var(--accent);color:var(--accent-fg);font-family:var(--sans);font-weight:600;font-size:12px;text-align:right;padding:8px 12px;white-space:nowrap}
+th:first-child,td:first-child{text-align:left}
+td{padding:6px 12px;text-align:right;border-top:1px solid var(--line);white-space:nowrap}
+tr.total td{background:var(--tint);font-weight:600}
+.note{font-size:13px;color:var(--muted);margin:0}
+.msg{font-size:14px;margin:0}.msg.bad{color:var(--bad)}.msg.ok{color:var(--ok)}
+.bar{height:4px;background:var(--line);border-radius:2px;overflow:hidden}
+.bar i{display:block;height:100%;width:40%;background:var(--accent);animation:run 1.1s ease-in-out infinite alternate}
+@keyframes run{from{margin-left:0}to{margin-left:60%}}
+@media (prefers-reduced-motion:reduce){.bar i{animation:none;width:100%}}
+:root{--mustard:#a67a00}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--mustard:#e3b02b}}
+:root[data-theme="dark"]{--mustard:#e3b02b}
+option.tip{color:var(--mustard)}
+tr.zone td{background:var(--tint);font-weight:600}
+tr.usr{cursor:pointer}
+tr.usr td:first-child{padding-left:28px}
+tr.usr:hover td,tr.usr:focus-visible td{background:var(--bg)}
+tr.usr:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+tr.tip td:first-child{color:var(--mustard);font-weight:500}
+#zpanel{display:flex;flex-direction:column;gap:14px}
+#zpanel[hidden]{display:none}
+#ztbl th{text-align:right}#ztbl th:first-child{text-align:left}
+#ztbl input.zname{flex:none;width:auto;min-width:6ch;font:inherit;font-weight:600;background:transparent;color:inherit;border:0;border-bottom:1px dashed var(--muted);border-radius:0;padding:2px 0}
+#ztbl input.zname:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.zmeta{font-weight:400;color:var(--muted)}
+</style>
+
+<main>
+  <header>
+    <h1>Venta por terminal con propinas</h1>
+    <p class="lead">Carga el Excel de Registros generales, elige el punto de venta y descarga el Excel con la venta de cada terminal por producto. El archivo se procesa en tu navegador y no se sube a ningun servidor.</p>
+  </header>
+
+  <section class="step" id="s1">
+    <h2>1. Archivo de Registros generales</h2>
+    <div class="drop" id="drop" tabindex="0" role="button" aria-label="Elegir archivo">
+      <b>Arrastra aqui el archivo .xlsx</b><br>o haz clic para elegirlo
+    </div>
+    <input type="file" id="file" accept=".xlsx" hidden>
+    <div id="status"></div>
+  </section>
+
+  <section class="step" id="sz" hidden>
+    <h2>Zonas</h2>
+    <div class="row"><button id="zbtn" class="ghost" aria-expanded="false" aria-controls="zpanel">Ver zonas y ventas por punto de venta</button></div>
+    <div id="zpanel" hidden>
+      <div class="stats" id="zstats"></div>
+      <div class="scroll" style="max-height:520px"><table id="ztbl"></table></div>
+      <div class="row"><button id="zdl">Descargar Excel de zonas</button><span class="msg" id="zdlmsg" role="status"></span></div>
+      <p class="note">Los puntos de venta en amarillo mostaza tienen propinas. Haz clic en un punto de venta para generar su resultado abajo. Haz clic en el nombre de una zona para cambiarlo; el cambio se recordara en este navegador.</p>
+    </div>
+  </section>
+
+  <section class="step" id="s2" aria-disabled="true">
+    <h2>2. Punto de venta</h2>
+    <div class="row">
+      <select id="user" aria-label="Punto de venta"></select>
+      <button id="go" disabled>Generar</button>
+    </div>
+    <p class="note">La lista muestra los puntos de venta del archivo con su venta total y en amarillo los puntos de venta con propinas.</p>
+  </section>
+
+  <section class="step" id="s3" aria-disabled="true" hidden>
+    <h2>3. Resultado</h2>
+    <div class="stats" id="stats"></div>
+    <div class="scroll"><table id="tbl"></table></div>
+    <div class="row">
+      <button id="dl">Descargar Excel</button>
+      <span class="msg" id="dlmsg" role="status"></span>
+    </div>
+    <p class="note" id="cut"></p>
+  </section>
+</main>
+
+<script>
+/* Lector y escritor de .xlsx sin dependencias (zip + xml a mano). */
+var XL=(function(){
+  var enc=new TextEncoder();
+  var NS='http://schemas.openxmlformats.org/spreadsheetml/2006/main';
+  var RNS='http://schemas.openxmlformats.org/officeDocument/2006/relationships';
+  var XMLH='<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n';
+  var FMT={M:'\\$#,##0;[Red]\\-\\$#,##0',P:'\\$#,##0.00;[Red]\\-\\$#,##0.00'};
+
+  /* ---------- lectura ---------- */
+  function ux(s){
+    if(s.indexOf('&')<0)return s;
+    return s.replace(/&(#x[0-9a-fA-F]+|#[0-9]+|amp|lt|gt|quot|apos);/g,function(m,g){
+      if(g==='amp')return '&';if(g==='lt')return '<';if(g==='gt')return '>';if(g==='quot')return '"';if(g==='apos')return "'";
+      return String.fromCodePoint(g.charAt(1)==='x'?parseInt(g.slice(2),16):parseInt(g.slice(1),10));
+    });
+  }
+  async function readDir(file){
+    var size=file.size,n=Math.min(size,65557);
+    var tail=new Uint8Array(await file.slice(size-n,size).arrayBuffer());
+    var dv=new DataView(tail.buffer),e=-1;
+    for(var i=tail.length-22;i>=0;i--){if(dv.getUint32(i,true)===0x06054b50){e=i;break}}
+    if(e<0)throw new Error('El archivo no parece ser un .xlsx valido.');
+    var cnt=dv.getUint16(e+10,true),cdSize=dv.getUint32(e+12,true),cdOff=dv.getUint32(e+16,true);
+    if(cdOff===0xFFFFFFFF||cnt===0xFFFF)throw new Error('Este archivo zip es demasiado grande (zip64).');
+    var cd=new Uint8Array(await file.slice(cdOff,cdOff+cdSize).arrayBuffer()),cv=new DataView(cd.buffer),p=0,out={},dec=new TextDecoder();
+    for(var k=0;k<cnt;k++){
+      if(cv.getUint32(p,true)!==0x02014b50)break;
+      var nl=cv.getUint16(p+28,true),el=cv.getUint16(p+30,true),cl=cv.getUint16(p+32,true);
+      out[dec.decode(cd.subarray(p+46,p+46+nl))]={method:cv.getUint16(p+10,true),csize:cv.getUint32(p+20,true),usize:cv.getUint32(p+24,true),off:cv.getUint32(p+42,true)};
+      p+=46+nl+el+cl;
+    }
+    return out;
+  }
+  async function openEntry(file,ent){
+    var lh=new DataView(await file.slice(ent.off,ent.off+30).arrayBuffer());
+    var st=ent.off+30+lh.getUint16(26,true)+lh.getUint16(28,true);
+    var s=file.slice(st,st+ent.csize).stream();
+    if(ent.method===8)s=s.pipeThrough(new DecompressionStream('deflate-raw'));
+    else if(ent.method!==0)throw new Error('El archivo usa una compresion no soportada.');
+    return s.getReader();
+  }
+  async function entryText(file,ent){
+    var rd=await openEntry(file,ent),dec=new TextDecoder(),s='';
+    for(;;){var r=await rd.read();if(r.done)break;s+=dec.decode(r.value,{stream:true})}
+    return s;
+  }
+  function attr(tag,n){var m=new RegExp('\\b'+n+'="([^"]*)"').exec(tag);return m?ux(m[1]):null}
+
+  async function open(file){
+    var dir=await readDir(file);
+    var wbEnt=dir['xl/workbook.xml'],relEnt=dir['xl/_rels/workbook.xml.rels'];
+    if(!wbEnt||!relEnt)throw new Error('El archivo no parece ser un .xlsx de Excel.');
+    var wb=await entryText(file,wbEnt),rel=await entryText(file,relEnt),rid={},sheets={},m;
+    var rr=/<Relationship\b[^>]*>/g;
+    while((m=rr.exec(rel))){var t=attr(m[0],'Target');if(t)rid[attr(m[0],'Id')]=t.charAt(0)==='/'?t.slice(1):'xl/'+t}
+    var sr=/<sheet\b[^>]*>/g;
+    while((m=sr.exec(wb))){var nm=attr(m[0],'name'),id=attr(m[0],'r:id');if(nm&&rid[id])sheets[nm]=rid[id]}
+    var shared=[];
+    if(dir['xl/sharedStrings.xml']){
+      var ss=await entryText(file,dir['xl/sharedStrings.xml']),si=/<si>([\s\S]*?)<\/si>/g,tt;
+      while((m=si.exec(ss))){var tr=/<t\b[^>]*>([\s\S]*?)<\/t>/g,str='';while((tt=tr.exec(m[1])))str+=tt[1];shared.push(ux(str))}
+    }
+    return {file:file,dir:dir,sheets:sheets,shared:shared};
+  }
+  function parseRow(s,shared,want){
+    var out=[],i=0;
+    for(;;){
+      i=s.indexOf('<c ',i);if(i<0)break;
+      var gt=s.indexOf('>',i);if(gt<0)break;
+      if(s.charCodeAt(gt-1)===47){i=gt+1;continue}
+      var end=s.indexOf('</c>',gt);if(end<0)break;
+      var ri=s.indexOf(' r="',i);
+      if(ri<0||ri>gt){i=end+4;continue}
+      var p=ri+4,ci=0,ch;
+      while((ch=s.charCodeAt(p))>=65&&ch<=90){ci=ci*26+(ch-64);p++}
+      ci-=1;
+      if(want&&!want[ci]){i=end+4;continue}
+      var t='n',ti=s.indexOf(' t="',i);
+      if(ti>=0&&ti<gt){t=s.substring(ti+4,s.indexOf('"',ti+4))}
+      var body=s.substring(gt+1,end),v;
+      if(t==='inlineStr'){
+        var a=body.indexOf('<t');if(a<0){i=end+4;continue}
+        a=body.indexOf('>',a)+1;var b=body.indexOf('</t>',a);
+        v=ux(body.substring(a,b<0?body.length:b));
+      }else{
+        var vs=body.indexOf('<v>');if(vs<0){i=end+4;continue}
+        var ve=body.indexOf('</v>',vs);v=body.substring(vs+3,ve<0?body.length:ve);
+        if(t==='s')v=shared[+v];else if(t==='str'||t==='e')v=ux(v);else if(t==='b')v=v==='1';else v=+v;
+      }
+      out[ci]=v;i=end+4;
+    }
+    return out;
+  }
+  /* rows(info, hoja, columnas, cb(valores), progreso(filas, fraccion)) */
+  async function rows(info,sheet,names,cb,prog){
+    var ent=info.dir[info.sheets[sheet]];
+    if(!ent)throw new Error('No encontre la hoja "'+sheet+'".');
+    var rd=await openEntry(info.file,ent),dec=new TextDecoder(),buf='',first=true,want=null,map=null,cnt=0,got=0,chunks=0;
+    for(;;){
+      var r=await rd.read();if(r.done)break;
+      got+=r.value.length;buf+=dec.decode(r.value,{stream:true});
+      var pos=0;
+      for(;;){
+        var s=buf.indexOf('<row',pos);if(s<0){pos=Math.max(pos,buf.length-3);break}
+        var gt=buf.indexOf('>',s);if(gt<0){pos=s;break}
+        if(buf.charCodeAt(gt-1)===47){pos=gt+1;continue}
+        var e=buf.indexOf('</row>',gt);if(e<0){pos=s;break}
+        var inner=buf.substring(gt+1,e);pos=e+6;
+        if(first){
+          first=false;var h=parseRow(inner,info.shared,null);
+          map=names.map(function(n){var k=h.indexOf(n);if(k<0)throw new Error('Falta la columna "'+n+'" en la hoja "'+sheet+'".');return k});
+          want={};map.forEach(function(k){want[k]=1});continue;
+        }
+        var a=parseRow(inner,info.shared,want),out=new Array(names.length);
+        for(var k=0;k<map.length;k++)out[k]=a[map[k]];
+        cb(out);cnt++;
+      }
+      buf=buf.slice(pos);
+      if(++chunks%6===0){await new Promise(function(f){setTimeout(f,0)});if(prog)prog(cnt,Math.min(1,got/(ent.usize||got||1)))}
+    }
+    if(prog)prog(cnt,1);
+    return cnt;
+  }
+
+  /* ---------- escritura ---------- */
+  function colName(i){var s='';i++;while(i>0){var m=(i-1)%26;s=String.fromCharCode(65+m)+s;i=Math.floor((i-1)/26)}return s}
+  function xe(s){return String(s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
+  function Styles(){
+    this.fonts=['<font><sz val="11"/><name val="Calibri"/><family val="2"/></font>'];
+    this.fills=['<fill><patternFill patternType="none"/></fill>','<fill><patternFill patternType="gray125"/></fill>'];
+    this.xfs=['<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>'];this.map={};
+  }
+  Styles.prototype.id=function(sp){
+    if(!sp)return 0;
+    var k=JSON.stringify(sp);if(this.map[k]!==undefined)return this.map[k];
+    var fk='<font>'+(sp.b?'<b/>':'')+'<sz val="11"/>'+(sp.color?'<color rgb="'+sp.color+'"/>':'')+'<name val="Calibri"/><family val="2"/></font>';
+    var fi=this.fonts.indexOf(fk);if(fi<0){fi=this.fonts.length;this.fonts.push(fk)}
+    var li=0;
+    if(sp.fill){var lk='<fill><patternFill patternType="solid"><fgColor rgb="'+sp.fill+'"/><bgColor indexed="64"/></patternFill></fill>';li=this.fills.indexOf(lk);if(li<0){li=this.fills.length;this.fills.push(lk)}}
+    var nf=sp.fmt==='M'?164:sp.fmt==='P'?165:0;
+    var al=(sp.h||sp.v||sp.wrap||sp.indent)?'<alignment'+(sp.h?' horizontal="'+sp.h+'"':'')+(sp.v?' vertical="'+sp.v+'"':'')+(sp.wrap?' wrapText="1"':'')+(sp.indent?' indent="'+sp.indent+'"':'')+'/>':'';
+    var xf='<xf numFmtId="'+nf+'" fontId="'+fi+'" fillId="'+li+'" borderId="0" xfId="0" applyFont="1"'+(li?' applyFill="1"':'')+(nf?' applyNumberFormat="1"':'')+(al?' applyAlignment="1">'+al+'</xf>':'/>');
+    this.xfs.push(xf);return(this.map[k]=this.xfs.length-1);
+  };
+  Styles.prototype.xml=function(){
+    return XMLH+'<styleSheet xmlns="'+NS+'"><numFmts count="2"><numFmt numFmtId="164" formatCode="'+xe(FMT.M)+'"/><numFmt numFmtId="165" formatCode="'+xe(FMT.P)+'"/></numFmts><fonts count="'+this.fonts.length+'">'+this.fonts.join('')+'</fonts><fills count="'+this.fills.length+'">'+this.fills.join('')+'</fills><borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="'+this.xfs.length+'">'+this.xfs.join('')+'</cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>';
+  };
+  var CT=null;
+  function crc32(u8){
+    if(!CT){CT=new Uint32Array(256);for(var n=0;n<256;n++){var c=n;for(var k=0;k<8;k++)c=c&1?0xEDB88320^(c>>>1):c>>>1;CT[n]=c>>>0}}
+    var c2=0xFFFFFFFF;for(var i=0;i<u8.length;i++)c2=CT[(c2^u8[i])&255]^(c2>>>8);
+    return(c2^0xFFFFFFFF)>>>0;
+  }
+  function zip(files){
+    var parts=[],cd=[],off=0;
+    files.forEach(function(f){
+      var nm=enc.encode(f.name),d=enc.encode(f.data),cr=crc32(d);
+      var lh=new Uint8Array(30+nm.length),v=new DataView(lh.buffer);
+      v.setUint32(0,0x04034b50,true);v.setUint16(4,20,true);v.setUint16(6,0x0800,true);v.setUint16(12,0x21,true);
+      v.setUint32(14,cr,true);v.setUint32(18,d.length,true);v.setUint32(22,d.length,true);v.setUint16(26,nm.length,true);lh.set(nm,30);
+      parts.push(lh,d);
+      var ch=new Uint8Array(46+nm.length),w=new DataView(ch.buffer);
+      w.setUint32(0,0x02014b50,true);w.setUint16(4,20,true);w.setUint16(6,20,true);w.setUint16(8,0x0800,true);w.setUint16(14,0x21,true);
+      w.setUint32(16,cr,true);w.setUint32(20,d.length,true);w.setUint32(24,d.length,true);w.setUint16(28,nm.length,true);w.setUint32(42,off,true);ch.set(nm,46);
+      cd.push(ch);off+=lh.length+d.length;
+    });
+    var cdLen=0;cd.forEach(function(c){cdLen+=c.length});
+    var e=new Uint8Array(22),ev=new DataView(e.buffer);
+    ev.setUint32(0,0x06054b50,true);ev.setUint16(8,files.length,true);ev.setUint16(10,files.length,true);ev.setUint32(12,cdLen,true);ev.setUint32(16,off,true);
+    return new Blob(parts.concat(cd,[e]),{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+  }
+  /* write(nombreHoja, filas, {widths:[], heights:{fila:alto}, freeze:{x,y}}) -> Blob .xlsx
+     celda = valor | {v, s:{b,color,fill,fmt:'M'|'P',h,v,wrap,indent}} */
+  function write(sheetName,rowsArr,o){
+    o=o||{};var st=new Styles(),x='';
+    rowsArr.forEach(function(r,ri){
+      var rx='';
+      r.forEach(function(c,ci){
+        var v=c,sp=null;if(c&&typeof c==='object'){v=c.v;sp=c.s}
+        var s=st.id(sp),ref=colName(ci)+(ri+1),sa=s?' s="'+s+'"':'';
+        if(v===null||v===undefined||v===''){if(s)rx+='<c r="'+ref+'"'+sa+'/>'}
+        else if(typeof v==='number')rx+='<c r="'+ref+'"'+sa+'><v>'+(isFinite(v)?v:0)+'</v></c>';
+        else rx+='<c r="'+ref+'"'+sa+' t="inlineStr"><is><t xml:space="preserve">'+xe(v)+'</t></is></c>';
+      });
+      var h=o.heights&&o.heights[ri+1];
+      x+='<row r="'+(ri+1)+'"'+(h?' ht="'+h+'" customHeight="1"':'')+'>'+rx+'</row>';
+    });
+    var pane='';
+    if(o.freeze){
+      var fx=o.freeze.x||0,fy=o.freeze.y||0;
+      if(fx&&fy)pane='<pane xSplit="'+fx+'" ySplit="'+fy+'" topLeftCell="'+colName(fx)+(fy+1)+'" activePane="bottomRight" state="frozen"/><selection pane="topRight"/><selection pane="bottomLeft"/><selection pane="bottomRight"/>';
+      else if(fy)pane='<pane ySplit="'+fy+'" topLeftCell="A'+(fy+1)+'" activePane="bottomLeft" state="frozen"/><selection pane="bottomLeft"/>';
+      else if(fx)pane='<pane xSplit="'+fx+'" topLeftCell="'+colName(fx)+'1" activePane="topRight" state="frozen"/><selection pane="topRight"/>';
+    }
+    var cols='';
+    if(o.widths)cols='<cols>'+o.widths.map(function(w,i){return '<col min="'+(i+1)+'" max="'+(i+1)+'" width="'+w+'" customWidth="1"/>'}).join('')+'</cols>';
+    var sheet=XMLH+'<worksheet xmlns="'+NS+'"><sheetViews><sheetView workbookViewId="0">'+pane+'</sheetView></sheetViews><sheetFormatPr defaultRowHeight="15"/>'+cols+'<sheetData>'+x+'</sheetData></worksheet>';
+    var ctypes=XMLH+'<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>';
+    var rels=XMLH+'<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="'+RNS+'/officeDocument" Target="xl/workbook.xml"/></Relationships>';
+    var wb=XMLH+'<workbook xmlns="'+NS+'" xmlns:r="'+RNS+'"><sheets><sheet name="'+xe(sheetName)+'" sheetId="1" r:id="rId1"/></sheets></workbook>';
+    var wrels=XMLH+'<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="'+RNS+'/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="'+RNS+'/styles" Target="styles.xml"/></Relationships>';
+    return zip([{name:'[Content_Types].xml',data:ctypes},{name:'_rels/.rels',data:rels},{name:'xl/workbook.xml',data:wb},{name:'xl/_rels/workbook.xml.rels',data:wrels},{name:'xl/styles.xml',data:st.xml()},{name:'xl/worksheets/sheet1.xml',data:sheet}]);
+  }
+  return {open:open,rows:rows,write:write};
+})();
+</script>
+<script>
+(function(){
+  var $=function(i){return document.getElementById(i)};
+  var PS_SHEET='DATA-PRODUCT-POINT-SALE', PAY_SHEET='DATA-PRODUCT-PAYMENT';
+  var D=null, RES=null;
+  var money=new Intl.NumberFormat('es-MX',{style:'currency',currency:'MXN',maximumFractionDigits:0});
+  var money2=new Intl.NumberFormat('es-MX',{style:'currency',currency:'MXN',minimumFractionDigits:2});
+  var r2=function(n){return Math.round(n*100)/100};
+  function setStatus(html,cls,busy){
+    $('status').innerHTML=(busy?'<div class="bar"><i></i></div>':'')+(html?'<p class="msg '+(cls||'')+'">'+html+'</p>':'');
+  }
+  function esc(s){return String(s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
+
+  var drop=$('drop'), fin=$('file');
+  drop.onclick=function(){fin.click()};
+  drop.onkeydown=function(e){if(e.key==='Enter'||e.key===' '){e.preventDefault();fin.click()}};
+  ['dragenter','dragover'].forEach(function(t){drop.addEventListener(t,function(e){e.preventDefault();drop.classList.add('over')})});
+  ['dragleave','drop'].forEach(function(t){drop.addEventListener(t,function(e){e.preventDefault();drop.classList.remove('over')})});
+  drop.addEventListener('drop',function(e){var f=e.dataTransfer&&e.dataTransfer.files[0];if(f)load(f)});
+  fin.onchange=function(){if(fin.files[0])load(fin.files[0])};
+
+  function idx(h,name){var i=h.indexOf(name);if(i<0)throw new Error('Falta la columna "'+name+'".');return i}
+
+  function tick(){return new Promise(function(r){setTimeout(r,30)})}
+  function progress(label){
+    var last=0;
+    return function(n,fr){var t=Date.now();if(t-last<300&&fr<1)return;last=t;
+      setStatus(label+': '+Math.round(fr*100)+'% ('+n.toLocaleString('es-MX')+' filas)','',true)};
+  }
+  async function load(f){
+    D=null;RES=null;$('s2').setAttribute('aria-disabled','true');$('go').disabled=true;$('s3').hidden=true;$('sz').hidden=true;$('zpanel').hidden=true;$('zbtn').setAttribute('aria-expanded','false');$('zbtn').textContent='Ver zonas y ventas por punto de venta';
+    setStatus('Leyendo '+esc(f.name)+' ('+(f.size/1048576).toFixed(1)+' MB). Puede tardar un par de minutos; no cierres la pestana.','',true);
+    await tick();
+    try{
+      if(!(f.stream&&typeof DecompressionStream!=='undefined'))throw new Error('Este navegador es muy antiguo para leer el archivo. Usa una version reciente de Chrome, Edge, Safari o Firefox.');
+      var info=await XL.open(f);
+      if(!info.sheets[PS_SHEET]||!info.sheets[PAY_SHEET])throw new Error('El archivo no tiene las hojas "'+PS_SHEET+'" y "'+PAY_SHEET+'".');
+      var term=new Map(),byUser=new Map(),n=0;
+      await XL.rows(info,PAY_SHEET,['OrderId','TerminalId'],function(v){
+        if(v[0]!=null&&v[1]!=null&&!term.has(v[0]))term.set(v[0],String(v[1]).trim());
+      },progress('Leyendo pagos'));
+      await XL.rows(info,PS_SHEET,['OrderId','PointSaleName','ProductName','Monto Total Productos','Propina','ZoneId'],function(v){
+        if(v[1]==null)return;
+        var u=String(v[1]).trim(),e=byUser.get(u);
+        if(!e){e={rows:[],total:0,tip:0,zone:v[5]};byUser.set(u,e)}
+        var m=Number(v[3])||0,tp=Number(v[4])||0;
+        e.rows.push([v[0],String(v[2]).trim(),m,tp]);e.total+=m;e.tip+=tp;n++;
+      },progress('Leyendo ventas'));
+      D={byUser:byUser,term:term,name:f.name};
+      var names=Array.from(byUser.keys()).sort();
+      $('user').innerHTML=names.map(function(u){return '<option value="'+esc(u)+'"'+(byUser.get(u).tip>0?' class="tip"':'')+'>'+esc(u)+' - '+money.format(byUser.get(u).total)+'</option>'}).join('');
+      var pre=names.indexOf('BARRA 5 STAGE 2 ALCOHOL');if(pre>=0)$('user').selectedIndex=pre;
+      $('s2').removeAttribute('aria-disabled');$('go').disabled=false;renderZones();$('sz').hidden=false;
+      setStatus('<span class="file-ok"><span class="name">'+esc(f.name)+'</span></span><br>'+n.toLocaleString('es-MX')+' lineas de venta, '+names.length+' puntos de venta.','ok');
+    }catch(err){
+      setStatus(esc(err&&err.message||err)+' Si el archivo es muy grande, cierra otras pestanas y vuelve a intentar.','bad');
+    }
+  }
+
+  var DEF={'95':'GENERAL','97':'MOVILIDAD','98':'ALIMENTOS VIP','99':'VIP','100':'FOOD TRUCKS','101':'MERCH'}, ZN={};
+  try{var sv=JSON.parse(localStorage.getItem('venta_zonas')||'{}');for(var kz in sv)if(typeof sv[kz]==='string')ZN[kz]=sv[kz]}catch(e){}
+  function zname(id){return ZN[id]||DEF[id]||('Zona '+id)}
+  var ZD=null;
+  function zoneCell(g){
+    var n=g.users.length+' pv';
+    if(g.id==='')return 'Sin zona - '+n;
+    var nm=zname(g.id);
+    return '<input type="text" class="zname" data-z="'+esc(g.id)+'" value="'+esc(nm)+'" size="'+Math.max(6,nm.length+1)+'" aria-label="Nombre de la zona '+esc(g.id)+'"> <span class="zmeta">- '+n+'</span>';
+  }
+  $('ztbl').addEventListener('change',function(e){
+    var t=e.target;if(!t.classList||!t.classList.contains('zname'))return;
+    var v=t.value.trim(),id=t.dataset.z;
+    if(v&&v!==(DEF[id]||('Zona '+id)))ZN[id]=v;else delete ZN[id];
+    try{localStorage.setItem('venta_zonas',JSON.stringify(ZN))}catch(err){}
+    renderZones();
+  });
+  function renderZones(){
+    var zones=new Map();
+    D.byUser.forEach(function(e,u){
+      var z=e.zone==null?'':String(e.zone), g=zones.get(z);
+      if(!g){g={id:z,users:[],total:0,tip:0};zones.set(z,g)}
+      g.users.push({u:u,total:e.total,tip:e.tip});g.total+=e.total;g.tip+=e.tip;
+    });
+    var list=Array.from(zones.values()).sort(function(a,b){return b.total-a.total});
+    var gt=0,gp=0,nu=0,h='<thead><tr><th>Zona / punto de venta</th><th>Venta sin propina</th><th>Propinas</th><th>Venta total (con propina)</th></tr></thead><tbody>';
+    list.forEach(function(g){
+      g.users.sort(function(a,b){return b.total-a.total});
+      h+='<tr class="zone"><td>'+zoneCell(g)+'</td><td>'+money.format(g.total)+'</td><td>'+money2.format(g.tip)+'</td><td>'+money2.format(g.total+g.tip)+'</td></tr>';
+      g.users.forEach(function(x){
+        h+='<tr class="usr'+(x.tip>0?' tip':'')+'" data-u="'+esc(x.u)+'" tabindex="0"><td>'+esc(x.u)+'</td><td>'+money.format(x.total)+'</td><td>'+money2.format(x.tip)+'</td><td>'+money2.format(x.total+x.tip)+'</td></tr>';
+      });
+      gt+=g.total;gp+=g.tip;nu+=g.users.length;
+    });
+    h+='<tr class="total"><td>TOTAL - '+nu+' pv</td><td>'+money.format(gt)+'</td><td>'+money2.format(gp)+'</td><td>'+money2.format(gt+gp)+'</td></tr></tbody>';
+    ZD={list:list,gt:gt,gp:gp,nu:nu};
+    $('ztbl').innerHTML=h;
+    $('zstats').innerHTML=[['Zonas',list.length],['PV',nu],['Venta sin propina',money.format(gt)],['Propinas',money2.format(gp)],['Venta total',money2.format(r2(gt+gp))]]
+      .map(function(x){return '<div><span>'+x[0]+'</span><strong>'+x[1]+'</strong></div>'}).join('');
+  }
+  $('zbtn').onclick=function(){
+    var p=$('zpanel'),open=p.hidden;p.hidden=!open;
+    this.setAttribute('aria-expanded',String(open));
+    this.textContent=open?'Ocultar zonas':'Ver zonas y ventas por punto de venta';
+  };
+  async function saveFile(name,buf){
+    var dls=null;
+    try{dls=(window.claude&&window.claude.use)?await window.claude.use('downloads'):null}catch(e){dls=null}
+    if(dls){
+      try{await dls.save({filename:name,data:new Blob([buf])});return}
+      catch(e){if(e&&e.code==='declined')throw e}
+    }
+    var blob=new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+    var a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;a.style.display='none';
+    document.body.appendChild(a);a.click();
+    setTimeout(function(){URL.revokeObjectURL(a.href);a.remove()},5000);
+  }
+  function makeZonesXlsx(Z){
+    var HS={b:1,color:'FFFFFFFF',fill:'FF1F4E78',h:'center',v:'center',wrap:1};
+    var HL={b:1,color:'FFFFFFFF',fill:'FF1F4E78',h:'left',v:'center',wrap:1};
+    var out=[[{v:'Zona / punto de venta',s:HL},{v:'Venta sin propina',s:HS},{v:'Propinas',s:HS},{v:'Venta total (con propina)',s:HS}]];
+    function nums(a,b,c,bold){
+      var s1={fmt:'M'},s2={fmt:'P'},s3={fmt:'P'};
+      if(bold)[s1,s2,s3].forEach(function(s){s.b=1;s.fill='FFDDEBF7'});
+      return [{v:a,s:s1},{v:b,s:s2},{v:c,s:s3}];
+    }
+    Z.list.forEach(function(g){
+      var nm=g.id===''?'Sin zona':zname(g.id);
+      out.push([{v:nm+' - '+g.users.length+' pv',s:{b:1,fill:'FFDDEBF7'}}].concat(nums(r2(g.total),r2(g.tip),r2(g.total+g.tip),true)));
+      g.users.forEach(function(x){
+        var s={h:'left',indent:2};if(x.tip>0){s.b=1;s.color='FFA67A00'}
+        out.push([{v:x.u,s:s}].concat(nums(r2(x.total),r2(x.tip),r2(x.total+x.tip),false)));
+      });
+    });
+    out.push([{v:'TOTAL - '+Z.nu+' pv',s:{b:1,fill:'FFDDEBF7'}}].concat(nums(r2(Z.gt),r2(Z.gp),r2(Z.gt+Z.gp),true)));
+    return XL.write('Ventas por zona',out,{widths:[44,20,14,24],heights:{1:32},freeze:{y:1}});
+  }
+  $('zdl').onclick=async function(){
+    var msg=$('zdlmsg');if(!ZD)return;
+    msg.className='msg';msg.textContent='Preparando archivo...';
+    try{
+      var buf=await makeZonesXlsx(ZD);
+      await saveFile('Ventas_por_zona.xlsx',buf);
+      msg.className='msg ok';msg.textContent='Archivo guardado.';
+    }catch(e){
+      msg.className='msg bad';
+      msg.textContent=(e&&e.code==='declined')?'Descarga cancelada.':'No se pudo guardar el archivo'+(e&&e.message?': '+e.message:'.');
+    }
+  };
+  function pick(tr){
+    if(!tr||!tr.dataset||!tr.dataset.u)return;
+    $('user').value=tr.dataset.u;
+    $('go').click();
+  }
+  $('ztbl').addEventListener('click',function(e){pick(e.target.closest('tr.usr'))});
+  $('ztbl').addEventListener('keydown',function(e){if(e.key==='Enter'||e.key===' '){var tr=e.target.closest('tr.usr');if(tr){e.preventDefault();pick(tr)}}});
+
+  function build(user){
+    var e=D.byUser.get(user), cells=new Map(), prodTot=new Map(), termTot=new Map(), tips=new Map(), noTerm=0;
+    e.rows.forEach(function(r){
+      var t=D.term.get(r[0]); if(!t){t='SIN TERMINAL';noTerm++}
+      var p=r[1];
+      var row=cells.get(t); if(!row){row=new Map();cells.set(t,row)}
+      row.set(p,(row.get(p)||0)+r[2]);
+      prodTot.set(p,(prodTot.get(p)||0)+r[2]);
+      termTot.set(t,(termTot.get(t)||0)+r[2]);
+      tips.set(t,(tips.get(t)||0)+r[3]);
+    });
+    var prods=Array.from(prodTot.keys()).sort(function(a,b){return prodTot.get(b)-prodTot.get(a)});
+    var terms=Array.from(termTot.keys()).sort(function(a,b){return termTot.get(b)-termTot.get(a)});
+    var rows=terms.map(function(t){
+      var row=cells.get(t);
+      return {t:t,v:prods.map(function(p){return r2(row.get(p)||0)}),total:r2(termTot.get(t)),tip:r2(tips.get(t)),grand:r2(termTot.get(t)+tips.get(t))};
+    });
+    var sums=prods.map(function(p){return r2(prodTot.get(p))});
+    var tipSum=r2(rows.reduce(function(a,r){return a+r.tip},0));
+    return {user:user,prods:prods,rows:rows,sums:sums,total:r2(e.total),tip:tipSum,grand:r2(e.total+tipSum),noTerm:noTerm};
+  }
+
+  $('go').onclick=function(){
+    if(!D)return;
+    RES=build($('user').value);
+    $('dlmsg').textContent='';$('dlmsg').className='msg';
+    $('stats').innerHTML=[['Terminales',RES.rows.length],['Productos',RES.prods.length],['Venta total',money2.format(RES.total)],['Propinas',money2.format(RES.tip)],['Total + propinas',money2.format(RES.grand)]]
+      .map(function(x){return '<div><span>'+x[0]+'</span><strong>'+x[1]+'</strong></div>'}).join('');
+    var h='<thead><tr><th>Terminal</th><th>Total</th><th>Propinas</th><th>Total + propinas</th></tr></thead><tbody>';
+    RES.rows.forEach(function(r){h+='<tr><td>'+esc(r.t)+'</td><td>'+money.format(r.total)+'</td><td>'+money2.format(r.tip)+'</td><td>'+money2.format(r.grand)+'</td></tr>'});
+    h+='<tr class="total"><td>TOTAL</td><td>'+money.format(RES.total)+'</td><td>'+money2.format(RES.tip)+'</td><td>'+money2.format(RES.grand)+'</td></tr></tbody>';
+    $('tbl').innerHTML=h;
+    $('cut').textContent='La vista previa resume cada terminal; el Excel descargado incluye las '+RES.prods.length+' columnas de producto.'+(RES.noTerm?' Aviso: '+RES.noTerm+' lineas no tienen terminal y quedaron en la fila "SIN TERMINAL".':'');
+    $('s3').hidden=false;$('s3').removeAttribute('aria-disabled');
+    $('s3').scrollIntoView({behavior:'smooth',block:'start'});
+  };
+
+  function makeXlsx(R){
+    var HS={b:1,color:'FFFFFFFF',fill:'FF1F4E78',h:'center',v:'center',wrap:1};
+    var head=['Terminal'].concat(R.prods,['TOTAL','Propinas','Total + Propinas']).map(function(h){return {v:h,s:HS}});
+    var nc=head.length,out=[head];
+    function cell(v,c,last){var s={fmt:c>=nc-1?'P':'M'};if(c===nc-2||c===nc||last)s.b=1;if(last)s.fill='FFDDEBF7';return {v:v,s:s}}
+    R.rows.forEach(function(r){out.push([r.t].concat(r.v.concat([r.total,r.tip,r.grand]).map(function(v,i){return cell(v,i+2,false)})))});
+    out.push([{v:'TOTAL',s:{b:1,fill:'FFDDEBF7'}}].concat(R.sums.concat([R.total,R.tip,R.grand]).map(function(v,i){return cell(v,i+2,true)})));
+    var widths=[20];for(var c=2;c<=nc;c++)widths.push(c===nc?17:(c>=nc-2?13:15));
+    return XL.write('Venta por terminal ($)',out,{widths:widths,heights:{1:45},freeze:{x:1,y:1}});
+  }
+
+  $('dl').onclick=async function(){
+    if(!RES)return;
+    var msg=$('dlmsg');msg.className='msg';msg.textContent='Preparando archivo...';
+    try{
+      var buf=await makeXlsx(RES);
+      var slug=RES.user.replace(/[^A-Za-z0-9]+/g,'_').replace(/^_|_$/g,'');
+      await saveFile('Venta_por_terminal_con_propinas_'+slug+'.xlsx',buf);
+      msg.className='msg ok';msg.textContent='Archivo guardado.';
+    }catch(e){
+      msg.className='msg bad';
+      msg.textContent=(e&&e.code==='declined')?'Descarga cancelada.':'No se pudo guardar el archivo'+(e&&e.message?': '+e.message:'.');
+    }
+  };
+})();
+</script>
